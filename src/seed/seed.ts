@@ -1,6 +1,12 @@
 import { uploadAndReplaceImages } from './helper';
-import { IDirectus, TypeMap } from '@directus/sdk';
+import {
+  createItems,
+  deleteItems,
+  readItems,
+  updateSingleton,
+} from '@directus/sdk';
 import { Level, log } from '../utils/logger';
+import { DirectusUtilitiesClient } from '../utils/types';
 
 interface SeedOptions {
   clearTableEntries?: boolean;
@@ -12,7 +18,7 @@ interface SeedSingletonOptions {
 }
 
 export const seedSingletonWithImages = async <T extends string>(
-  directus: IDirectus<TypeMap>,
+  directus: DirectusUtilitiesClient,
   collection: T,
   data: object,
   options: SeedSingletonOptions
@@ -23,28 +29,33 @@ export const seedSingletonWithImages = async <T extends string>(
     options.fileRoot
   );
   log(`Updating singleton ${collection}.`, Level.INFO);
-  await directus.singleton(collection).update(dataWithImages);
+  await directus.request(updateSingleton(collection, dataWithImages));
   log(`Successfully updated singleton ${collection}.`, Level.SUCCESS);
 };
 
 export const seedWithImages = async <T extends string>(
-  directus: IDirectus<TypeMap>,
+  directus: DirectusUtilitiesClient,
   collection: T,
   items: object[],
   options: SeedOptions
 ) => {
   if (options.clearTableEntries) {
-    const existingItems = await directus
-      .items<T>(collection)
-      .readByQuery({ limit: -1 });
-    if (existingItems?.data && existingItems.data.length !== 0) {
+    directus.request(readItems(collection, { limit: -1 }));
+    const existingItems = await directus.request(
+      readItems(collection, { limit: -1 })
+    );
+
+    if (existingItems && existingItems.length) {
       log(
-        `Removing ${existingItems.data.length} existing items from ${collection}.`,
+        `Removing ${existingItems.length} existing items from ${collection}.`,
         Level.INFO
       );
-      await directus
-        .items<T>(collection)
-        .deleteMany(existingItems.data.map((item: any) => item.id));
+      await directus.request(
+        deleteItems(
+          collection,
+          existingItems.map((item: any) => item.id)
+        )
+      );
     }
   }
 
@@ -57,7 +68,7 @@ export const seedWithImages = async <T extends string>(
     `Creating items for ${collection} (count: ${itemsWithImages.length}).`,
     Level.INFO
   );
-  await directus.items(collection).createMany(itemsWithImages);
+  await directus.request(createItems(collection, itemsWithImages));
   log(
     `Successfully created ${itemsWithImages.length} items for ${collection}.`,
     Level.SUCCESS

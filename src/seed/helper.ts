@@ -1,32 +1,48 @@
-import { IDirectus, TypeMap } from '@directus/sdk';
+import { uploadFiles } from '@directus/sdk';
 import fs from 'fs';
 import path from 'path';
-import FormData from 'form-data';
 import { Level, log } from '../utils/logger';
+import { DirectusUtilitiesClient } from '../utils/types';
+import mimeDb from 'mime-db';
 
 export const FILE_PREFIX = 'file:';
 export const isFile = (value: any) =>
   typeof value === 'string' && value.startsWith(FILE_PREFIX);
 
+const getMimeType = (fileExtension: string | undefined): string | null => {
+  if (!fileExtension) {
+    return null;
+  }
+
+  const mimeDbEntry = Object.entries(mimeDb).find(([, data]) => {
+    return data.extensions?.includes(fileExtension);
+  });
+
+  return mimeDbEntry?.[0] || null;
+};
+
 export async function uploadImage(
-  directus: IDirectus<TypeMap>,
+  directus: DirectusUtilitiesClient,
   imagePath: string
 ): Promise<string | undefined> {
-  const form = new FormData();
+  const fileName = imagePath.split('/').at(-1) || '';
+  const fileExtension = imagePath.split('.').at(-1);
+  const fileMimeType = getMimeType(fileExtension) || 'application/octet-stream';
+  const fileBuffer = await fs.promises.readFile(imagePath);
+  const blob = new Blob([fileBuffer], { type: fileMimeType });
 
-  form.append('file', fs.createReadStream(imagePath));
-  const response = await directus.files.createOne(form, undefined, {
-    requestOptions: {
-      headers: {
-        ...form.getHeaders(),
-      },
-    },
-  });
+  const form = new FormData();
+  console.log(fileMimeType);
+  form.append('title', fileName);
+  form.append('file', blob);
+
+  const response = await directus.request(uploadFiles(form));
+
   return response?.id;
 }
 
 export const uploadAndReplaceImages = async (
-  directus: IDirectus<TypeMap>,
+  directus: DirectusUtilitiesClient,
   items: object[],
   fileRoot = ''
 ) => {
